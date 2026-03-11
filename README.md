@@ -3,12 +3,6 @@
 > AI 기반 수영 트레이닝 코치 앱  
 > AI-powered personalized swim training coach
 
-<p align="center">
-  <img src="docs/screenshots/home.png" width="200"/>
-  <img src="docs/screenshots/program.png" width="200"/>
-  <img src="docs/screenshots/feedback.png" width="200"/>
-</p>
-
 ---
 
 ## ✨ 주요 기능
