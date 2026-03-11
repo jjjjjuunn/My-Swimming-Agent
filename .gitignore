@@ -1,0 +1,40 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/
+.idea/
+
+# ──────────────────────────
+# swim_training_api (Python)
+# ──────────────────────────
+swim_training_api/venv/
+swim_training_api/.venv/
+swim_training_api/.env
+swim_training_api/firebase-credentials.json
+swim_training_api/__pycache__/
+swim_training_api/**/__pycache__/
+swim_training_api/*.py[cod]
+swim_training_api/data/chroma_db/
+
+# ──────────────────────────
+# swim_training_app (Flutter)
+# ──────────────────────────
+swim_training_app/build/
+swim_training_app/.dart_tool/
+swim_training_app/.flutter-plugins-dependencies
+swim_training_app/.pub-cache/
+swim_training_app/.pub/
+
+# Firebase 민감 파일
+swim_training_app/android/app/google-services.json
+swim_training_app/ios/Runner/GoogleService-Info.plist
+swim_training_app/macos/Runner/GoogleService-Info.plist
+swim_training_app/firebase.json
+swim_training_app/lib/firebase_options.dart
+
+# 기타
+*.log
+PROGRESS.md
