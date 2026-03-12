@@ -50,3 +50,6 @@ ios/Runner/GoogleService-Info.plist
 macos/Runner/GoogleService-Info.plist
 firebase.json
 lib/firebase_options.dart
+
+# API 키 / 환경변수 (절대 커밋 금지)
+assets/.env

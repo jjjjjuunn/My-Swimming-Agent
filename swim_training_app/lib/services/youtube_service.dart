@@ -1,12 +1,12 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:translator/translator.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../models/video_item.dart';
 
 class YouTubeService {
-  // YouTube Data API v3 키
-  // https://console.cloud.google.com/
-  static const String _apiKey = 'AIzaSyAvlUatf0PF9YKWsM1xZ7vcKE1-VwGCWsM';
+  // YouTube Data API v3 키 — assets/.env 파일에서 로드 (git에 커밋 금지)
+  static String get _apiKey => dotenv.env['YOUTUBE_API_KEY'] ?? '';
   static const String _baseUrl = 'https://www.googleapis.com/youtube/v3';
   
   // Google Translator 인스턴스

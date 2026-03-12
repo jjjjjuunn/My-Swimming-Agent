@@ -310,6 +310,27 @@ async def feedback_to_program(request: FeedbackToProgramRequest):
     try:
         llm = LLMService()
 
+        # ── 개인화 정보 자동 조회 ──
+        personalization_section = ""
+        if request.user_id:
+            try:
+                from app.services.program_generator import ProgramGenerator
+                gen = ProgramGenerator()
+                user_level, user_context = await gen._build_personalization(request.user_id)
+                if user_level or user_context:
+                    personalization_section = "\n## 사용자 개인화 정보 (반드시 반영!)\n"
+                    if user_level:
+                        level_labels = {
+                            "beginner": "초급", "intermediate": "중급", "advanced": "고급",
+                        }
+                        personalization_section += f"- 실력 수준: {level_labels.get(user_level, user_level)}\n"
+                        personalization_section += f"  → 이 사용자 수준({user_level})에 맞게 거리, 반복, 강도를 조절하세요.\n"
+                    if user_context:
+                        personalization_section += f"\n### 사용자 현황\n{user_context}\n"
+                        personalization_section += "→ 완주율, 영법 분포, 컨디션을 고려하여 프로그램 설계\n"
+            except Exception as e:
+                logger.warning(f"feedbackToProgram 개인화 조회 실패 (무시): {e}")
+
         system_prompt = """당신은 수영 코치입니다. AI 피드백에서 "다음 훈련 처방" 섹션을 읽고 이를 구조화된 JSON 운동 프로그램으로 변환하세요.
 
 출력은 반드시 아래 JSON 형식만 반환하세요 (마크다운 코드블록 없이):
@@ -344,7 +365,8 @@ async def feedback_to_program(request: FeedbackToProgramRequest):
 {request.feedback_text}
 
 훈련 목표: {request.training_goal or '전반적 향상'}
-주 종목: {', '.join(request.strokes) if request.strokes else '피드백에서 파악'}"""
+주 종목: {', '.join(request.strokes) if request.strokes else '피드백에서 파악'}
+{personalization_section}"""
 
         response_text = await llm.generate_text(
             system_prompt=system_prompt,

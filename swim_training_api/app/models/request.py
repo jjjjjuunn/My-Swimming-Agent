@@ -68,3 +68,7 @@ class FeedbackToProgramRequest(BaseModel):
         default=None,
         description="집중 종목 리스트",
     )
+    user_id: Optional[str] = Field(
+        default=None,
+        description="Firebase 사용자 ID (개인화 정보 조회용)",
+    )

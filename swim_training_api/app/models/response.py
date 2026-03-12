@@ -9,6 +9,7 @@ class Exercise(BaseModel):
     repeat: int = Field(default=1, description="반복 횟수")
     rest_seconds: int = Field(default=0, description="세트 간 휴식 시간 (초)")
     notes: str = Field(default="", description="추가 설명 / 코칭 포인트")
+    cycle_time: str | None = Field(default=None, description="사이클 타임 (예: '2:15')")
 
 
 class ProgramLevel(BaseModel):

@@ -5,6 +5,7 @@ import '../models/saved_program.dart';
 import '../models/workout_log.dart';
 import '../services/workout_log_service.dart';
 import '../theme/app_theme.dart';
+import 'chat_screen.dart';
 
 class WorkoutExecutionScreen extends StatefulWidget {
   final SavedProgram savedProgram;
@@ -120,7 +121,99 @@ class _WorkoutExecutionScreenState extends State<WorkoutExecutionScreen> {
     });
   }
 
-  Future<void> _completeCurrentSet({required bool skipped}) async {
+  /// 스킵 시 몇 회 완료했는지 묻는 다이얼로그
+  Future<int?> _showSkipDialog(Exercise ex) async {
+    int count = 0;
+    return showDialog<int>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              backgroundColor: AppTheme.cardColor,
+              title: const Text('스킵 전 기록', style: TextStyle(color: Colors.white)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Text(
+                    ex.description,
+                    style: const TextStyle(color: Colors.white70, fontSize: 14),
+                    textAlign: TextAlign.center,
+                  ),
+                  Text(
+                    '${ex.distance}m × ${ex.repeat}회',
+                    style: const TextStyle(color: Colors.white54, fontSize: 13),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    '몇 회 완료했나요?',
+                    style: TextStyle(color: Colors.white, fontSize: 15),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      IconButton(
+                        onPressed: count > 0
+                            ? () => setStateDialog(() => count--)
+                            : null,
+                        icon: const Icon(Icons.remove_circle_outline, color: Colors.white70, size: 32),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Text(
+                          '$count회',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: count < ex.repeat
+                            ? () => setStateDialog(() => count++)
+                            : null,
+                        icon: const Icon(Icons.add_circle_outline, color: Colors.white70, size: 32),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    count > 0
+                        ? '${ex.distance * count}m 기록됨'
+                        : '0m (전체 스킵)',
+                    style: TextStyle(
+                      color: count > 0 ? AppTheme.primaryBlue : Colors.white38,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('취소'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, count),
+                  child: Text(
+                    count == 0 ? '전체 스킵' : '확인',
+                    style: TextStyle(
+                      color: count == 0 ? Colors.orange : AppTheme.primaryBlue,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _completeCurrentSet({required bool skipped, int completedRepeat = 0}) async {
     if (_sets.isEmpty || _isSaving) return;
 
     final now = DateTime.now();
@@ -140,11 +233,13 @@ class _WorkoutExecutionScreenState extends State<WorkoutExecutionScreen> {
     final rawDuration = now.difference(startedAt).inSeconds;
     final activeDuration = (rawDuration - _pausedAccumulatedSeconds).clamp(0, rawDuration);
 
+    final actualCompleted = skipped ? completedRepeat : item.exercise.repeat;
     final status = skipped ? 'skipped' : 'completed';
     final setLog = SetLog(
       exercise: item.exercise.description,
       distance: item.exercise.distance,
       repeat: item.exercise.repeat,
+      completedRepeat: actualCompleted,
       status: status,
       durationSeconds: activeDuration,
       pauses: List<PauseLog>.from(_currentPauses),
@@ -154,9 +249,7 @@ class _WorkoutExecutionScreenState extends State<WorkoutExecutionScreen> {
 
     setState(() {
       _setLogs.add(setLog);
-      if (!skipped) {
-        _completedDistance += item.exercise.totalDistance;
-      }
+      _completedDistance += actualCompleted * item.exercise.distance;
       if (!isLastSet) {
         _currentIndex += 1;
       }
@@ -190,6 +283,7 @@ class _WorkoutExecutionScreenState extends State<WorkoutExecutionScreen> {
           exercise: item.exercise.description,
           distance: item.exercise.distance,
           repeat: item.exercise.repeat,
+          completedRepeat: 0,
           status: 'stopped',
           durationSeconds: activeDuration,
           pauses: List<PauseLog>.from(_currentPauses),
@@ -202,6 +296,7 @@ class _WorkoutExecutionScreenState extends State<WorkoutExecutionScreen> {
       programTitle: widget.savedProgram.title,
       levelLabel: widget.savedProgram.levelLabel,
       trainingGoal: widget.savedProgram.trainingGoal,
+      strokes: widget.savedProgram.strokes,
       startedAt: _workoutStartedAt,
       completedAt: DateTime.now(),
       plannedDistance: widget.savedProgram.program.totalDistance,
@@ -212,7 +307,115 @@ class _WorkoutExecutionScreenState extends State<WorkoutExecutionScreen> {
     await _logService.saveLog(log);
 
     if (!mounted) return;
-    Navigator.pop(context, result);
+    _ticker?.cancel();
+    await _showWorkoutCompleteSheet(log: log, result: result);
+  }
+
+  /// 운동 완료 요약 메시지 빌드
+  String _buildSummaryMessage(WorkoutLog log) {
+    final parts = <String>[];
+    parts.add('방금 "폭로그램 제목: ${log.programTitle}" 훈련을 끝냈어.');
+    final comp = log.completionRate.toStringAsFixed(0);
+    parts.add('계획 ${log.plannedDistance}m → 완료 ${log.completedDistance}m (통조율 ${comp}%)');
+    if (log.strokes.isNotEmpty) {
+      parts.add('종목: ${log.strokes.join(', ')}');
+    }
+    final totalSets = log.sets.length;
+    final completedSets = log.sets.where((s) => s.status == 'completed').length;
+    final partialSets = log.sets.where((s) => s.status == 'skipped' && s.completedRepeat > 0).length;
+    final skippedSets = log.sets.where((s) => s.status == 'skipped' && s.completedRepeat == 0).length;
+    if (totalSets > 0) {
+      final setLineParts = <String>['${totalSets}세트 중 ${completedSets}개 완료'];
+      if (partialSets > 0) setLineParts.add('${partialSets}개 부분완료');
+      if (skippedSets > 0) setLineParts.add('${skippedSets}개 스킵');
+      parts.add(setLineParts.join(', '));
+      for (final s in log.sets.where((s) => s.status == 'skipped' && s.completedRepeat > 0)) {
+        parts.add('  └ ${s.exercise}: ${s.repeat}회 중 ${s.completedRepeat}회 완료');
+      }
+    }
+    parts.add('\n오늘 훈련 분석해주고 다음 훈련 방향 추천해줘.');
+    return parts.join('\n');
+  }
+
+  /// 운동 완료 후 바텐시트 표시
+  Future<void> _showWorkoutCompleteSheet({
+    required WorkoutLog log,
+    required String result,
+  }) async {
+    final summaryMessage = _buildSummaryMessage(log);
+
+    final goToChat = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isDismissible: false,
+      enableDrag: false,
+      builder: (sheetCtx) => Container(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        decoration: const BoxDecoration(
+          color: Color(0xFF0D1B2A),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Icon(Icons.check_circle_rounded, color: AppTheme.success, size: 56),
+            const SizedBox(height: 12),
+            const Text(
+              '훈련 완료!',
+              style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${log.completedDistance}m 완주 · ${log.completionRate.toStringAsFixed(0)}% 달성',
+              style: const TextStyle(color: Colors.white54, fontSize: 14),
+            ),
+            const SizedBox(height: 28),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => Navigator.pop(sheetCtx, true),
+                icon: const Icon(Icons.auto_awesome, size: 18),
+                label: const Text('AI 코치에게 분석 요청', style: TextStyle(fontSize: 15)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryBlue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                onPressed: () => Navigator.pop(sheetCtx, false),
+                child: const Text('나중에', style: TextStyle(color: Colors.white54, fontSize: 15)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (goToChat == true) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => ChatScreen(initialMessage: summaryMessage)),
+      );
+    } else {
+      Navigator.pop(context, result);
+    }
   }
 
   Future<void> _stopWorkout() async {
@@ -495,7 +698,13 @@ class _WorkoutExecutionScreenState extends State<WorkoutExecutionScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: OutlinedButton(
-                onPressed: _isSaving ? null : () => _completeCurrentSet(skipped: true),
+                onPressed: _isSaving ? null : () async {
+                  final item = _sets[_currentIndex];
+                  final count = await _showSkipDialog(item.exercise);
+                  if (count != null) {
+                    _completeCurrentSet(skipped: true, completedRepeat: count);
+                  }
+                },
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.orange,
                   side: BorderSide(color: Colors.orange.withValues(alpha: 0.5)),

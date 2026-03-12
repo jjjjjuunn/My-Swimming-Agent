@@ -18,10 +18,13 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLogin = true;
   bool _isEmailLoading = false;
   bool _isGoogleLoading = false;
+  bool _isAppleLoading = false;
+  bool _isKakaoLoading = false;
   bool _verificationEmailSent = false;
   String? _errorMessage;
 
-  bool get _isAnyLoading => _isEmailLoading || _isGoogleLoading;
+  bool get _isAnyLoading =>
+      _isEmailLoading || _isGoogleLoading || _isAppleLoading || _isKakaoLoading;
 
   Future<void> _handleEmailAuth() async {
     final email = _emailController.text.trim();
@@ -68,6 +71,66 @@ class _LoginScreenState extends State<LoginScreen> {
       } else {
         setState(() { _errorMessage = msg; _isEmailLoading = false; });
       }
+    }
+  }
+
+  Future<void> _handleAppleSignIn() async {
+    setState(() { _isAppleLoading = true; _errorMessage = null; });
+    try {
+      final result = await _authService.signInWithApple();
+      if (result == null) {
+        setState(() { _isAppleLoading = false; });
+        return;
+      }
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const MainScreen()),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = 'Apple 로그인에 실패했습니다: $e';
+        _isAppleLoading = false;
+      });
+    }
+  }
+
+  Future<void> _handleKakaoSignIn() async {
+    setState(() { _isKakaoLoading = true; _errorMessage = null; });
+    try {
+      final result = await _authService.signInWithKakao();
+      if (result == null) {
+        setState(() { _isKakaoLoading = false; });
+        return;
+      }
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const MainScreen()),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e.toString();
+      String displayMsg;
+      if (msg.contains('cancel') || msg.contains('Cancel') || msg.contains('canceled')) {
+        displayMsg = '';  // 취소는 에러 표시 안 함
+      } else if (msg.contains('ClientFailed') || msg.contains('misconfigured') || msg.contains('도메인')) {
+        displayMsg = 'Kakao 앱 설정을 확인해주세요.';
+      } else if (msg.contains('network') || msg.contains('Network') || msg.contains('SocketException')) {
+        displayMsg = '네트워크 연결을 확인해주세요.';
+      } else if (msg.contains('서버') || msg.contains('500') || msg.contains('Firebase')) {
+        displayMsg = '서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+      } else {
+        displayMsg = 'Kakao 로그인에 실패했습니다.';
+        // 디버그용 로그는 콘솔에만
+        // ignore: avoid_print
+        print('Kakao 로그인 오류 상세: $e');
+      }
+      setState(() {
+        _errorMessage = displayMsg.isEmpty ? null : displayMsg;
+        _isKakaoLoading = false;
+      });
     }
   }
 
@@ -247,10 +310,18 @@ class _LoginScreenState extends State<LoginScreen> {
                             Expanded(child: Divider(color: Colors.white.withValues(alpha: 0.2))),
                           ],
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 12),
 
                         // Google 버튼
                         _buildGoogleButton(),
+                        const SizedBox(height: 8),
+
+                        // Apple 버튼
+                        _buildAppleButton(),
+                        const SizedBox(height: 8),
+
+                        // Kakao 버튼
+                        _buildKakaoButton(),
                       ],
                     ),
                   ),
@@ -361,7 +432,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return GestureDetector(
       onTap: _isAnyLoading ? null : _handleGoogleSignIn,
       child: Container(
-        height: 52,
+        height: 44,
         decoration: BoxDecoration(
           color: AppTheme.cardColor,
           borderRadius: BorderRadius.circular(12),
@@ -383,6 +454,83 @@ class _LoginScreenState extends State<LoginScreen> {
                     _isLogin ? 'Google로 로그인' : 'Google로 간편 회원가입',
                     style: const TextStyle(
                       color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _buildAppleButton() {
+    return GestureDetector(
+      onTap: _isAnyLoading ? null : _handleAppleSignIn,
+      child: Container(
+        height: 44,
+        decoration: BoxDecoration(
+          color: Colors.black,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1),
+        ),
+        alignment: Alignment.center,
+        child: _isAppleLoading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.apple, color: Colors.white, size: 24),
+                  const SizedBox(width: 8),
+                  Text(
+                    _isLogin ? 'Apple로 로그인' : 'Apple로 간편 회원가입',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _buildKakaoButton() {
+    return GestureDetector(
+      onTap: _isAnyLoading ? null : _handleKakaoSignIn,
+      child: Container(
+        height: 44,
+        decoration: BoxDecoration(
+          color: const Color(0xFFFEE500),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        alignment: Alignment.center,
+        child: _isKakaoLoading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF3C1E1E)),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Image.asset(
+                    'assets/images/kakao_logo.png',
+                    width: 22,
+                    height: 22,
+                    errorBuilder: (_, __, ___) =>
+                        const Icon(Icons.chat_bubble, color: Color(0xFF3C1E1E), size: 22),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _isLogin ? '카카오로 로그인' : '카카오로 간편 회원가입',
+                    style: const TextStyle(
+                      color: Color(0xFF3C1E1E),
                       fontWeight: FontWeight.w600,
                       fontSize: 15,
                     ),

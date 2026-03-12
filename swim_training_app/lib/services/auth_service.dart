@@ -1,6 +1,13 @@
+import 'dart:convert';
+import 'dart:math';
+import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:http/http.dart' as http;
+import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart' as kakao;
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../models/user_model.dart';
 
 class AuthService {
@@ -191,6 +198,199 @@ class AuthService {
       print('❌ Google 로그인 오류: $e');
       rethrow;
     }
+  }
+
+  // Apple 로그인
+  Future<UserModel?> signInWithApple() async {
+    try {
+      // nonce 생성 (보안 검증용)
+      final rawNonce = _generateNonce();
+      final nonce = _sha256Nonce(rawNonce);
+
+      final appleCredential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+        nonce: nonce,
+      );
+
+      final oAuthCredential = OAuthProvider('apple.com').credential(
+        idToken: appleCredential.identityToken,
+        rawNonce: rawNonce,
+      );
+
+      final UserCredential userCredential =
+          await _auth.signInWithCredential(oAuthCredential);
+      final user = userCredential.user;
+      if (user == null) return null;
+
+      // Apple은 최초 로그인 때만 이름 제공
+      final displayName = appleCredential.givenName != null
+          ? '${appleCredential.givenName} ${appleCredential.familyName ?? ''}'.trim()
+          : user.displayName;
+
+      if (displayName != null && displayName.isNotEmpty) {
+        await user.updateDisplayName(displayName);
+      }
+
+      final doc = await _firestore.collection('users').doc(user.uid).get();
+      final existing = doc.exists ? doc.data()! : null;
+
+      final userModel = UserModel(
+        uid: user.uid,
+        email: user.email ?? appleCredential.email ?? '',
+        displayName: displayName ?? existing?['displayName'] ?? 'Apple 사용자',
+        photoURL: user.photoURL,
+        nickname: existing?['nickname'],
+        createdAt: existing?['createdAt'] != null
+            ? DateTime.parse(existing!['createdAt'])
+            : DateTime.now(),
+        lastLogin: DateTime.now(),
+        level: existing?['level'],
+        purpose: existing?['purpose'],
+        favoriteStrokes: List<String>.from(existing?['favoriteStrokes'] ?? []),
+        goals: List<String>.from(existing?['goals'] ?? []),
+        personalRecords: Map<String, dynamic>.from(existing?['personalRecords'] ?? {}),
+        onboardingCompleted: existing?['onboardingCompleted'] ?? false,
+      );
+
+      await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .set(userModel.toMap(), SetOptions(merge: true));
+
+      print('✅ Apple 로그인 성공: ${user.uid}');
+      return userModel;
+    } on SignInWithAppleAuthorizationException catch (e) {
+      if (e.code == AuthorizationErrorCode.canceled) return null;
+      throw 'Apple 로그인 실패: ${e.message}';
+    } catch (e) {
+      print('❌ Apple 로그인 오류: $e');
+      rethrow;
+    }
+  }
+
+  String _generateNonce([int length = 32]) {
+    const chars =
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._';
+    final random = Random.secure();
+    return List.generate(length, (_) => chars[random.nextInt(chars.length)])
+        .join();
+  }
+
+  String _sha256Nonce(String input) {
+    final bytes = utf8.encode(input);
+    final digest = sha256.convert(bytes);
+    return digest.toString();
+  }
+
+  // Kakao 로그인 (백엔드 커스텀 토큰 방식)
+  Future<UserModel?> signInWithKakao() async {
+    try {
+      // SDK 초기화 보장 (hot restart 등으로 main()이 재실행 안 됐을 때 대비)
+      try {
+        kakao.KakaoSdk.init(nativeAppKey: 'cc241f6fa6d46d9e2435486767b7ac6a');
+      } catch (_) {}
+
+      // 1. Kakao SDK로 로그인
+      kakao.OAuthToken kakaoToken;
+      bool kakaoTalkInstalled = false;
+      try {
+        kakaoTalkInstalled = await kakao.isKakaoTalkInstalled();
+      } catch (_) {
+        // 시뮬레이터 등에서 플랫폼 채널 실패 시 false로 처리
+        kakaoTalkInstalled = false;
+      }
+
+      if (kakaoTalkInstalled) {
+        try {
+          kakaoToken = await kakao.UserApi.instance.loginWithKakaoTalk();
+        } catch (_) {
+          kakaoToken = await kakao.UserApi.instance.loginWithKakaoAccount();
+        }
+      } else {
+        kakaoToken = await kakao.UserApi.instance.loginWithKakaoAccount();
+      }
+
+      // 2. 카카오 사용자 정보 조회
+      final kakaoUser = await kakao.UserApi.instance.me();
+      final kakaoEmail = kakaoUser.kakaoAccount?.email ?? '';
+      final kakaoName = kakaoUser.kakaoAccount?.profile?.nickname ?? 'Kakao 사용자';
+      final kakaoPhoto = kakaoUser.kakaoAccount?.profile?.profileImageUrl;
+
+      // 3. 백엔드에 Kakao 액세스 토큰 전송 → Firebase custom token 수신
+      final baseUrl = _getBaseUrl();
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/v1/auth/kakao'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'access_token': kakaoToken.accessToken}),
+      );
+
+      if (response.statusCode != 200) {
+        throw 'Kakao 인증 서버 오류: ${response.statusCode}';
+      }
+
+      final firebaseCustomToken =
+          jsonDecode(response.body)['firebase_token'] as String;
+
+      // 4. Firebase 커스텀 토큰으로 로그인
+      final UserCredential userCredential =
+          await _auth.signInWithCustomToken(firebaseCustomToken);
+      final user = userCredential.user;
+      if (user == null) return null;
+
+      // 5. Firestore에 사용자 정보 저장/업데이트
+      final doc = await _firestore.collection('users').doc(user.uid).get();
+      final existing = doc.exists ? doc.data()! : null;
+
+      final userModel = UserModel(
+        uid: user.uid,
+        email: kakaoEmail,
+        displayName: existing?['displayName'] ?? kakaoName,
+        photoURL: existing?['photoURL'] ?? kakaoPhoto,
+        nickname: existing?['nickname'],
+        createdAt: existing?['createdAt'] != null
+            ? DateTime.parse(existing!['createdAt'])
+            : DateTime.now(),
+        lastLogin: DateTime.now(),
+        level: existing?['level'],
+        purpose: existing?['purpose'],
+        favoriteStrokes: List<String>.from(existing?['favoriteStrokes'] ?? []),
+        goals: List<String>.from(existing?['goals'] ?? []),
+        personalRecords:
+            Map<String, dynamic>.from(existing?['personalRecords'] ?? {}),
+        onboardingCompleted: existing?['onboardingCompleted'] ?? false,
+      );
+
+      await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .set(userModel.toMap(), SetOptions(merge: true));
+
+      print('✅ Kakao 로그인 성공: ${user.uid}');
+      return userModel;
+    } on kakao.KakaoAuthException catch (e) {
+      print('❌ Kakao 인증 오류: $e');
+      rethrow;
+    } on kakao.KakaoClientException catch (e) {
+      print('❌ Kakao 클라이언트 오류: $e');
+      rethrow;
+    } catch (e) {
+      print('❌ Kakao 로그인 오류: $e');
+      rethrow;
+    }
+  }
+
+  String _getBaseUrl() {
+    // Android 에뮬레이터: 10.0.2.2, iOS 시뮬레이터/기기: localhost
+    const androidUrl = 'http://10.0.2.2:8000';
+    const iosUrl = 'http://localhost:8000';
+    // kIsWeb이나 Platform 대신 defaultTargetPlatform 사용
+    try {
+      if (defaultTargetPlatform == TargetPlatform.android) return androidUrl;
+    } catch (_) {}
+    return iosUrl;
   }
 
   // 로그아웃

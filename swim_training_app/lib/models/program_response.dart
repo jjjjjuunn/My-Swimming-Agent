@@ -102,6 +102,7 @@ class Exercise {
   final int repeat;
   final int restSeconds;
   final String notes;
+  final String? cycleTime; // e.g. "2:15" — 사이클 타임 (인터벌)
 
   Exercise({
     required this.description,
@@ -109,6 +110,7 @@ class Exercise {
     required this.repeat,
     required this.restSeconds,
     required this.notes,
+    this.cycleTime,
   });
 
   factory Exercise.fromJson(Map<String, dynamic> json) {
@@ -118,6 +120,7 @@ class Exercise {
       repeat: json['repeat'] as int,
       restSeconds: json['rest_seconds'] as int,
       notes: json['notes'] as String,
+      cycleTime: json['cycle_time'] as String?,
     );
   }
 
@@ -129,6 +132,7 @@ class Exercise {
     int? repeat,
     int? restSeconds,
     String? notes,
+    String? cycleTime,
   }) {
     return Exercise(
       description: description ?? this.description,
@@ -136,6 +140,7 @@ class Exercise {
       repeat: repeat ?? this.repeat,
       restSeconds: restSeconds ?? this.restSeconds,
       notes: notes ?? this.notes,
+      cycleTime: cycleTime ?? this.cycleTime,
     );
   }
 }

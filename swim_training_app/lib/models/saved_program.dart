@@ -39,6 +39,7 @@ class SavedProgram {
           'repeat': e.repeat,
           'rest_seconds': e.restSeconds,
           'notes': e.notes,
+          if (e.cycleTime != null) 'cycle_time': e.cycleTime,
         }).toList(),
         'main_set': program.mainSet.map((e) => {
           'description': e.description,
@@ -46,6 +47,7 @@ class SavedProgram {
           'repeat': e.repeat,
           'rest_seconds': e.restSeconds,
           'notes': e.notes,
+          if (e.cycleTime != null) 'cycle_time': e.cycleTime,
         }).toList(),
         'cooldown': program.cooldown.map((e) => {
           'description': e.description,
@@ -53,6 +55,7 @@ class SavedProgram {
           'repeat': e.repeat,
           'rest_seconds': e.restSeconds,
           'notes': e.notes,
+          if (e.cycleTime != null) 'cycle_time': e.cycleTime,
         }).toList(),
         'total_distance': program.totalDistance,
         'estimated_minutes': program.estimatedMinutes,
@@ -67,6 +70,7 @@ class SavedProgram {
           'repeat': e.repeat,
           'rest_seconds': e.restSeconds,
           'notes': e.notes,
+          if (e.cycleTime != null) 'cycle_time': e.cycleTime,
         }).toList(),
         'main_set': originalProgram!.mainSet.map((e) => {
           'description': e.description,
@@ -74,6 +78,7 @@ class SavedProgram {
           'repeat': e.repeat,
           'rest_seconds': e.restSeconds,
           'notes': e.notes,
+          if (e.cycleTime != null) 'cycle_time': e.cycleTime,
         }).toList(),
         'cooldown': originalProgram!.cooldown.map((e) => {
           'description': e.description,
@@ -81,6 +86,7 @@ class SavedProgram {
           'repeat': e.repeat,
           'rest_seconds': e.restSeconds,
           'notes': e.notes,
+          if (e.cycleTime != null) 'cycle_time': e.cycleTime,
         }).toList(),
         'total_distance': originalProgram!.totalDistance,
         'estimated_minutes': originalProgram!.estimatedMinutes,

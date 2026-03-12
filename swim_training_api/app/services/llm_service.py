@@ -4,6 +4,7 @@ LLM Service using OpenAI API
 import json
 from typing import Dict, Any
 from langchain_openai import ChatOpenAI
+from langchain_core.messages import SystemMessage, HumanMessage
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.core.config import get_settings
@@ -20,7 +21,7 @@ class LLMService:
         self.model = ChatOpenAI(
             model=settings.openai_model,
             openai_api_key=settings.openai_api_key,
-            temperature=0.7,
+            temperature=1.0,
             max_tokens=8192,
         )
         logger.info(f"Initialized OpenAI model: {settings.openai_model}")
@@ -46,17 +47,19 @@ class LLMService:
             생성된 프로그램 구조를 포함하는 Dict
         """
         try:
-            # 시스템 및 사용자 프롬프트 결합
-            full_prompt = f"""{system_prompt}
-
-{user_prompt}
-
-Please respond ONLY with valid JSON following the exact structure specified above. No markdown, no explanations, just the JSON object."""
-            
             logger.info("OpenAI API 요청 전송 중...")
             
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(
+                    content=user_prompt
+                    + "\n\nPlease respond ONLY with valid JSON following the exact structure specified above. "
+                    "No markdown, no explanations, just the JSON object."
+                ),
+            ]
+            
             # 모델 호출
-            response = await self.model.ainvoke(full_prompt)
+            response = await self.model.ainvoke(messages)
             
             # 응답에서 컨텐츠 추출
             content = response.content

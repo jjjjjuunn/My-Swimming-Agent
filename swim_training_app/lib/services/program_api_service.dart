@@ -161,6 +161,7 @@ class ProgramApiService {
     required String feedbackText,
     String? trainingGoal,
     List<String>? strokes,
+    String? userId,
   }) async {
     final url = Uri.parse('$baseUrl/feedback-to-program');
 
@@ -172,6 +173,7 @@ class ProgramApiService {
           'feedback_text': feedbackText,
           if (trainingGoal != null) 'training_goal': trainingGoal,
           if (strokes != null) 'strokes': strokes,
+          if (userId != null) 'user_id': userId,
         }),
       );
 

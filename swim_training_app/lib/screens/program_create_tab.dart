@@ -7,6 +7,7 @@ import '../models/program_response.dart';
 import '../models/saved_program.dart';
 import '../services/program_api_service.dart';
 import '../services/local_storage_service.dart';
+import 'custom_workout_screen.dart';
 
 class ProgramCreateTab extends StatefulWidget {
   final VoidCallback? onProgramSaved;
@@ -252,6 +253,58 @@ class _ProgramCreateTabState extends State<ProgramCreateTab> {
                         ),
                       ),
                       
+                      const SizedBox(height: 16),
+
+                      // 커스텀 훈련 만들기 버튼
+                      GestureDetector(
+                        onTap: () async {
+                          final result = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => CustomWorkoutScreen(
+                                onProgramSaved: widget.onProgramSaved,
+                              ),
+                            ),
+                          );
+                          if (result == 'saved' && widget.onProgramSaved != null) {
+                            widget.onProgramSaved!();
+                          }
+                        },
+                        child: Container(
+                          width: double.infinity,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: AppTheme.cardColor,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: AppTheme.primaryBlue.withOpacity(0.3),
+                              width: 1,
+                            ),
+                          ),
+                          child: Center(
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.build_rounded,
+                                  size: 20,
+                                  color: Colors.white.withOpacity(0.8),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '직접 훈련 만들기',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white.withOpacity(0.8),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+
                       const SizedBox(height: 40), // 여백 추가
                     ],
                   ),
@@ -1125,6 +1178,11 @@ class _ProgramDetailScreenState extends State<ProgramDetailScreen> {
   }
 
   Widget _buildExerciseCard(Exercise exercise) {
+    // swim.com 스타일: "4 x 100 캐치업 드릴 @ 2:15"
+    final String mainLine = exercise.repeat > 1
+        ? '${exercise.repeat} x ${exercise.distance} ${exercise.description}'
+        : '${exercise.distance} ${exercise.description}';
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -1139,44 +1197,44 @@ class _ProgramDetailScreenState extends State<ProgramDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            exercise.description,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          Row(
-            children: [
-              _buildExerciseDetail(Icons.straighten, '${exercise.distance}m'),
-              const SizedBox(width: 16),
-              _buildExerciseDetail(Icons.repeat, '${exercise.repeat}회'),
-              if (exercise.restSeconds > 0) ...[
-                const SizedBox(width: 16),
-                _buildExerciseDetail(Icons.access_time, '휴식 ${exercise.restSeconds}초'),
-              ],
-            ],
-          ),
-
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppTheme.primaryBlue.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              '총 ${exercise.totalDistance}m',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.primaryBlue,
+          // 메인 라인: "4 x 100 캐치업 드릴 @ 2:15"
+          RichText(
+            text: TextSpan(
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+                height: 1.3,
               ),
+              children: [
+                TextSpan(text: mainLine),
+                if (exercise.cycleTime != null)
+                  TextSpan(
+                    text: ' @ ${exercise.cycleTime}',
+                    style: const TextStyle(
+                      color: AppTheme.primaryBlue,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+              ],
             ),
           ),
+
+          if (exercise.restSeconds > 0) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(Icons.access_time,
+                    color: Colors.white.withOpacity(0.4), size: 13),
+                const SizedBox(width: 4),
+                Text(
+                  '휴식 ${exercise.restSeconds}초',
+                  style: TextStyle(
+                      fontSize: 12, color: Colors.white.withOpacity(0.4)),
+                ),
+              ],
+            ),
+          ],
 
           if (exercise.notes.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -1215,22 +1273,6 @@ class _ProgramDetailScreenState extends State<ProgramDetailScreen> {
           ],
         ],
       ),
-    );
-  }
-
-  Widget _buildExerciseDetail(IconData icon, String text) {
-    return Row(
-      children: [
-        Icon(icon, color: AppTheme.primaryBlue, size: 16),
-        const SizedBox(width: 4),
-        Text(
-          text,
-          style: TextStyle(
-            fontSize: 13,
-            color: Colors.white.withOpacity(0.7),
-          ),
-        ),
-      ],
     );
   }
 }

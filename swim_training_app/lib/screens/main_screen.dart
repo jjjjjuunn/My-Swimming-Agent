@@ -4,6 +4,7 @@ import 'home_screen.dart';
 import 'search_screen.dart';
 import 'program_screen.dart';
 import 'my_page_screen.dart';
+import 'chat_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -54,6 +55,16 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: _screens[_currentIndex],
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ChatScreen()),
+          );
+        },
+        backgroundColor: AppTheme.primaryBlue,
+        child: const Icon(Icons.chat_rounded, color: Colors.white),
+      ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: AppTheme.cardColor,

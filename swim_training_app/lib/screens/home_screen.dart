@@ -9,7 +9,7 @@ import 'saved_program_detail_screen.dart';
 import 'workout_history_screen.dart';
 import 'workout_history_detail_screen.dart';
 import 'swim_stats_screen.dart';
-import 'ai_feedback_screen.dart';
+import 'chat_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final VoidCallback? onNavigateToProgram;
@@ -424,7 +424,21 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadData();
   }
 
-  // ── AI Feedback 섹션 ──
+  String _buildCoachMessage() {
+    final parts = <String>[];
+    parts.add('최근 운동 기록 분석해줘.');
+    parts.add('');
+    for (final log in _recentLogs.take(3)) {
+      final comp = log.completionRate.toStringAsFixed(0);
+      final d = log.startedAt;
+      parts.add('\u2022 [${d.month}/${d.day}] ${log.programTitle} \u2014 ${log.completedDistance}m/${log.plannedDistance}m (${comp}%)');
+    }
+    parts.add('');
+    parts.add('훈련 패턴을 분석하고 다음 훈련 방향 추천해줘.');
+    return parts.join('\n');
+  }
+
+  // ── AI 코치 섹션 ──
   Widget _buildAiFeedbackSection() {
     final hasLogs = _recentLogs.isNotEmpty;
 
@@ -434,10 +448,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => AiFeedbackScreen(
-                    recentLogs: _recentLogs,
-                    onNavigateToMyProgram: widget.onNavigateToMyProgram,
-                  ),
+                  builder: (context) => ChatScreen(initialMessage: _buildCoachMessage()),
                 ),
               );
             }
@@ -482,7 +493,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'AI Feedback',
+                    'AI 코치에게 묻어보기',
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -492,8 +503,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 4),
                   Text(
                     hasLogs
-                        ? '최근 운동을 분석해드릴게요'
-                        : '운동 기록이 있으면 AI가 분석해줘요',
+                        ? '최근 운동 분석 · 다음 훈련 코치맞음'
+                        : '운동 기록이 있으면 AI 코치에게 묻어보세요',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.5),
                       fontSize: 13,

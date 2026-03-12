@@ -2,17 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart' as kakao;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'firebase_options.dart';
 import 'screens/main_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'theme/app_theme.dart';
 
+const _kakaoNativeAppKey = 'cc241f6fa6d46d9e2435486767b7ac6a';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: 'assets/.env');
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  kakao.KakaoSdk.init(nativeAppKey: _kakaoNativeAppKey);
   runApp(const SwimTrainingApp());
 }
 

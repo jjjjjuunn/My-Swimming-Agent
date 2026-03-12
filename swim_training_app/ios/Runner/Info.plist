@@ -32,6 +32,24 @@
 				<string>com.googleusercontent.apps.48948719172-39p5vgjnh715qm8e4q2nlvf32qgvv5h6</string>
 			</array>
 		</dict>
+		<!-- Kakao: YOUR_KAKAO_NATIVE_APP_KEY 를 실제 키로 교체 -->
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>kakaocc241f6fa6d46d9e2435486767b7ac6a</string>
+			</array>
+		</dict>
+	</array>
+	<!-- Kakao: 카카오톡 앱 설치 여부 확인용 -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>kakaokompassauth</string>
+		<string>storykompassauth</string>
+		<string>kakaolink</string>
+		<string>kakaoplus</string>
+		<string>kakaotalk</string>
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>

@@ -7,10 +7,13 @@ import 'workout_execution_screen.dart';
 
 class SavedProgramDetailScreen extends StatefulWidget {
   final SavedProgram savedProgram;
+  /// 채팅 화면에서 진입한 경우 true — 저장 버튼 표시
+  final bool isFromChat;
 
   const SavedProgramDetailScreen({
     super.key,
     required this.savedProgram,
+    this.isFromChat = false,
   });
 
   @override
@@ -23,6 +26,7 @@ class _SavedProgramDetailScreenState extends State<SavedProgramDetailScreen> {
   final _storageService = LocalStorageService();
   bool _isSaving = false;
   bool _isEditMode = false;
+  bool _isSavedToMyProgram = false;
 
   // 변경 이력 관리
   ProgramLevel? _originalProgramState;  // 화면 진입 시의 원본
@@ -868,8 +872,99 @@ class _SavedProgramDetailScreenState extends State<SavedProgramDetailScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // 저장 버튼 (변경사항이 있을 때만)
-                      if (_hasChanges) ...[
+                      // 채팅에서 진입: 내 프로그램에 저장 버튼
+                      if (widget.isFromChat) ...[
+                        GestureDetector(
+                          onTap: _isSaving || _isSavedToMyProgram
+                              ? null
+                              : () async {
+                                  setState(() => _isSaving = true);
+                                  try {
+                                    await _storageService
+                                        .saveProgram(_currentProgram);
+                                    setState(
+                                        () => _isSavedToMyProgram = true);
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        const SnackBar(
+                                          content:
+                                              Text('내 프로그램에 저장되었습니다 ✅'),
+                                          backgroundColor: Colors.green,
+                                        ),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content: Text('저장 실패: $e'),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    }
+                                  } finally {
+                                    setState(() => _isSaving = false);
+                                  }
+                                },
+                          child: Container(
+                            width: double.infinity,
+                            height: 52,
+                            decoration: BoxDecoration(
+                              gradient: _isSavedToMyProgram
+                                  ? null
+                                  : const LinearGradient(
+                                      colors: [
+                                        Color(0xFF00B4D8),
+                                        Color(0xFF0077B6),
+                                      ],
+                                    ),
+                              color: _isSavedToMyProgram
+                                  ? Colors.white.withOpacity(0.08)
+                                  : null,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Center(
+                              child: _isSaving
+                                  ? const SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          _isSavedToMyProgram
+                                              ? Icons.check_circle_outline
+                                              : Icons.bookmark_add_outlined,
+                                          color: Colors.white,
+                                          size: 20,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          _isSavedToMyProgram
+                                              ? '저장됨'
+                                              : '내 프로그램에 저장',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      // 저장 버튼 (변경사항이 있을 때만, 채팅 외)
+                      if (!widget.isFromChat && _hasChanges) ...[
                         GestureDetector(
                           onTap: _isSaving ? null : _saveChanges,
                           child: Container(
@@ -914,7 +1009,8 @@ class _SavedProgramDetailScreenState extends State<SavedProgramDetailScreen> {
                         ),
                         const SizedBox(height: 10),
                       ],
-                      // Let's Start 버튼
+                      // Let's Start 버튼 (채팅에서 열었을 때는 숨김)
+                      if (!widget.isFromChat)
                       GestureDetector(
                         onTap: _hasChanges
                             ? null
@@ -1088,11 +1184,19 @@ class _SavedProgramDetailScreenState extends State<SavedProgramDetailScreen> {
   }
 
   Widget _buildExerciseCard(Exercise exercise, String section, int index) {
+    // swim.com 스타일 포맷: "4 x 100 자유형 @ 2:15"
+    final String mainLine;
+    if (exercise.repeat > 1) {
+      mainLine = '${exercise.repeat} x ${exercise.distance} ${exercise.description}';
+    } else {
+      mainLine = '${exercise.distance} ${exercise.description}';
+    }
+
     return GestureDetector(
       onTap: _isEditMode ? () => _editExercise(section, index) : null,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(16),
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
           gradient: AppTheme.cardGradient,
           borderRadius: BorderRadius.circular(12),
@@ -1106,16 +1210,30 @@ class _SavedProgramDetailScreenState extends State<SavedProgramDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // 메인 라인: "4 x 100 캐치업 드릴 @ 2:15"
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
-                  child: Text(
-                    exercise.description,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
+                  child: RichText(
+                    text: TextSpan(
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                        height: 1.3,
+                      ),
+                      children: [
+                        TextSpan(text: mainLine),
+                        if (exercise.cycleTime != null) ...[
+                          TextSpan(
+                            text: ' @ ${exercise.cycleTime}',
+                            style: TextStyle(
+                              color: AppTheme.primaryBlue,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ),
@@ -1125,51 +1243,16 @@ class _SavedProgramDetailScreenState extends State<SavedProgramDetailScreen> {
                       color: AppTheme.primaryBlue.withOpacity(0.6)),
               ],
             ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                _buildExerciseChip(
-                    Icons.straighten, '${exercise.distance}m'),
-                const SizedBox(width: 8),
-                _buildExerciseChip(Icons.repeat, '${exercise.repeat}회'),
-                const SizedBox(width: 8),
-                _buildExerciseChip(
-                    Icons.timer, '휴식 ${exercise.restSeconds}초'),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryBlue.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                '총 ${exercise.totalDistance}m',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppTheme.primaryBlue,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
+            // 코칭 노트
             if (exercise.notes.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(Icons.lightbulb_outline,
-                      size: 14, color: Colors.amber.withOpacity(0.7)),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      exercise.notes,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white.withOpacity(0.5),
-                      ),
-                    ),
-                  ),
-                ],
+              const SizedBox(height: 4),
+              Text(
+                exercise.notes,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontStyle: FontStyle.italic,
+                  color: Colors.white.withOpacity(0.5),
+                ),
               ),
             ],
           ],
@@ -1220,6 +1303,7 @@ class _ExerciseEditSheet extends StatefulWidget {
 class _ExerciseEditSheetState extends State<_ExerciseEditSheet> {
   late TextEditingController _descController;
   late TextEditingController _notesController;
+  late TextEditingController _cycleTimeController;
   late int _distance;
   late int _repeat;
   late int _restSeconds;
@@ -1230,6 +1314,8 @@ class _ExerciseEditSheetState extends State<_ExerciseEditSheet> {
     _descController =
         TextEditingController(text: widget.exercise.description);
     _notesController = TextEditingController(text: widget.exercise.notes);
+    _cycleTimeController =
+        TextEditingController(text: widget.exercise.cycleTime ?? '');
     _distance = widget.exercise.distance;
     _repeat = widget.exercise.repeat;
     _restSeconds = widget.exercise.restSeconds;
@@ -1239,6 +1325,7 @@ class _ExerciseEditSheetState extends State<_ExerciseEditSheet> {
   void dispose() {
     _descController.dispose();
     _notesController.dispose();
+    _cycleTimeController.dispose();
     super.dispose();
   }
 
@@ -1320,6 +1407,14 @@ class _ExerciseEditSheetState extends State<_ExerciseEditSheet> {
             ),
             const SizedBox(height: 16),
 
+            // 사이클 타임
+            _buildTextField(
+              controller: _cycleTimeController,
+              label: '사이클 타임 (예: 2:15)',
+              icon: Icons.av_timer,
+            ),
+            const SizedBox(height: 16),
+
             // 총 거리 표시
             Container(
               padding: const EdgeInsets.all(12),
@@ -1358,12 +1453,14 @@ class _ExerciseEditSheetState extends State<_ExerciseEditSheet> {
             // 저장 버튼
             GestureDetector(
               onTap: () {
+                final cycleText = _cycleTimeController.text.trim();
                 final updated = widget.exercise.copyWith(
                   description: _descController.text.trim(),
                   distance: _distance,
                   repeat: _repeat,
                   restSeconds: _restSeconds,
                   notes: _notesController.text.trim(),
+                  cycleTime: cycleText.isNotEmpty ? cycleText : null,
                 );
                 widget.onSave(updated);
                 Navigator.pop(context);

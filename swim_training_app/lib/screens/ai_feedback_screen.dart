@@ -67,8 +67,10 @@ class _AiFeedbackScreenState extends State<AiFeedbackScreen> {
     setState(() => _isSavingProgram = true);
 
     try {
+      final user = FirebaseAuth.instance.currentUser;
       final programData = await _apiService.feedbackToProgram(
         feedbackText: _feedback!,
+        userId: user?.uid,
       );
 
       final level = ProgramLevel.fromJson(programData);
