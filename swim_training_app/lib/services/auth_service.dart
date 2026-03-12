@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatf
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart' as kakao;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../models/user_model.dart';
 
@@ -290,7 +291,7 @@ class AuthService {
     try {
       // SDK 초기화 보장 (hot restart 등으로 main()이 재실행 안 됐을 때 대비)
       try {
-        kakao.KakaoSdk.init(nativeAppKey: 'cc241f6fa6d46d9e2435486767b7ac6a');
+        kakao.KakaoSdk.init(nativeAppKey: dotenv.env['KAKAO_NATIVE_APP_KEY'] ?? '');
       } catch (_) {}
 
       // 1. Kakao SDK로 로그인

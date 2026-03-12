@@ -10,15 +10,13 @@ import 'screens/login_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'theme/app_theme.dart';
 
-const _kakaoNativeAppKey = 'cc241f6fa6d46d9e2435486767b7ac6a';
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: 'assets/.env');
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  kakao.KakaoSdk.init(nativeAppKey: _kakaoNativeAppKey);
+  kakao.KakaoSdk.init(nativeAppKey: dotenv.env['KAKAO_NATIVE_APP_KEY'] ?? '');
   runApp(const SwimTrainingApp());
 }
 
