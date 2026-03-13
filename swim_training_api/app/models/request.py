@@ -30,6 +30,16 @@ class ProgramRequest(BaseModel):
         description="수영 목적: competition, hobby, fitness, diet",
         examples=["competition"],
     )
+    pool_length: Optional[int] = Field(
+        default=25,
+        description="수영장 길이 (미터 또는 야드): 25 또는 50",
+        examples=[25],
+    )
+    pool_unit: Optional[str] = Field(
+        default="m",
+        description="수영장 길이 단위: m (미터) 또는 yd (야드)",
+        examples=["m"],
+    )
 
 
 class FeedbackRequest(BaseModel):

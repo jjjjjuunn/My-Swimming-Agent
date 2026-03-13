@@ -36,11 +36,19 @@ class ChatMessage {
 }
 
 class AgentService {
+  // 싱글턴 — 앱이 살아있는 동안 대화 이력 유지
+  static final AgentService _instance = AgentService._internal();
+  factory AgentService() => _instance;
+  AgentService._internal();
+
   static String get _host => Platform.isAndroid ? '10.0.2.2' : 'localhost';
   static String get _baseUrl => 'http://$_host:8000/api/v1';
 
   final List<ChatMessage> _history = [];
   List<ChatMessage> get history => List.unmodifiable(_history);
+
+  /// 이미 인사를 했는지 여부 — 탭 재진입 시 중복 인사 방지
+  bool hasGreeted = false;
 
   void addUserMessage(String content) {
     _history.add(ChatMessage(role: 'user', content: content));
@@ -50,7 +58,10 @@ class AgentService {
     _history.add(ChatMessage(role: 'assistant', content: content));
   }
 
-  void clearHistory() => _history.clear();
+  void clearHistory() {
+    _history.clear();
+    hasGreeted = false;
+  }
 
   /// SSE 스트리밍으로 Agent와 대화
   Stream<AgentEvent> chatStream({
@@ -140,6 +151,12 @@ class AgentService {
       'generate_program': '프로그램 생성 중...',
       'analyze_feedback': '피드백 분석 중...',
       'get_search_history': '검색 히스토리 확인 중...',
+      'get_weakness_analysis': '약점 분석 중...',
+      'save_user_equipment': '장비 저장 중...',
+      'get_user_equipment': '장비 확인 중...',
+      'save_condition': '컨디션 저장 중...',
+      'get_today_condition': '컨디션 확인 중...',
+      'save_workout_memo': '메모 저장 중...',
     };
     return labels[toolName] ?? '$toolName 실행 중...';
   }

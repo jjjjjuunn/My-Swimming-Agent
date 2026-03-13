@@ -194,6 +194,8 @@ async def generate_program(request: ProgramRequest):
             user_id=request.user_id,
             equipment=request.equipment,
             purpose=request.purpose,
+            pool_length=request.pool_length or 25,
+            pool_unit=request.pool_unit or "m",
         )
         return result
 

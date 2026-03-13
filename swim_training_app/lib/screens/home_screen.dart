@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
 import '../models/saved_program.dart';
@@ -9,16 +11,17 @@ import 'saved_program_detail_screen.dart';
 import 'workout_history_screen.dart';
 import 'workout_history_detail_screen.dart';
 import 'swim_stats_screen.dart';
-import 'chat_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final VoidCallback? onNavigateToProgram;
   final VoidCallback? onNavigateToMyProgram;
+  final VoidCallback? onNavigateToCoach;
 
   const HomeScreen({
     super.key,
     this.onNavigateToProgram,
     this.onNavigateToMyProgram,
+    this.onNavigateToCoach,
   });
 
   @override
@@ -34,6 +37,8 @@ class _HomeScreenState extends State<HomeScreen> {
   int _weeklyDistance = 0;
   int _weeklyCount = 0;
   bool _isLoading = true;
+  bool _hasTodaySchedule = false;
+  String? _todayScheduleTime;
 
   @override
   void initState() {
@@ -51,12 +56,37 @@ class _HomeScreenState extends State<HomeScreen> {
     final weeklyDist = await _workoutLogService.getWeeklyDistance();
     final weeklyCount = await _workoutLogService.getWeeklyWorkoutCount();
 
+    // 오늘 수영 스케줄 확인
+    bool hasTodaySchedule = false;
+    String? todayTime;
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final doc = await FirebaseFirestore.instance
+            .collection('users').doc(user.uid).get();
+        if (doc.exists) {
+          final schedule = doc.data()?['swim_schedule'] as Map<String, dynamic>?;
+          if (schedule != null) {
+            const dayKeys = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+            final todayIdx = DateTime.now().weekday - 1;
+            final todayKey = dayKeys[todayIdx];
+            if (schedule.containsKey(todayKey)) {
+              hasTodaySchedule = true;
+              todayTime = schedule[todayKey] as String?;
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
     if (mounted) {
       setState(() {
         _recentPrograms = programs.take(1).toList();
         _recentLogs = logs;
         _weeklyDistance = weeklyDist;
         _weeklyCount = weeklyCount;
+        _hasTodaySchedule = hasTodaySchedule;
+        _todayScheduleTime = todayTime;
         _isLoading = false;
       });
     }
@@ -81,14 +111,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildGreeting(),
+                        const SizedBox(height: 16),
+                        _buildCoachCard(),
                         const SizedBox(height: 24),
                         _buildStatsSummaryCard(),
                         const SizedBox(height: 28),
                         _buildMyWorkoutSection(),
                         const SizedBox(height: 28),
                         _buildWorkoutHistorySection(),
-                        const SizedBox(height: 28),
-                        _buildAiFeedbackSection(),
                         const SizedBox(height: 40),
                       ],
                     ),
@@ -424,101 +454,109 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadData();
   }
 
-  String _buildCoachMessage() {
-    final parts = <String>[];
-    parts.add('최근 운동 기록 분석해줘.');
-    parts.add('');
-    for (final log in _recentLogs.take(3)) {
-      final comp = log.completionRate.toStringAsFixed(0);
-      final d = log.startedAt;
-      parts.add('\u2022 [${d.month}/${d.day}] ${log.programTitle} \u2014 ${log.completedDistance}m/${log.plannedDistance}m (${comp}%)');
-    }
-    parts.add('');
-    parts.add('훈련 패턴을 분석하고 다음 훈련 방향 추천해줘.');
-    return parts.join('\n');
-  }
+  // ── 코치 카드 (홈 상단) ──
+  Widget _buildCoachCard() {
+    final weekdayNames = ['월', '화', '수', '목', '금', '토', '일'];
+    final todayName = weekdayNames[DateTime.now().weekday - 1];
 
-  // ── AI 코치 섹션 ──
-  Widget _buildAiFeedbackSection() {
-    final hasLogs = _recentLogs.isNotEmpty;
+    String title;
+    String subtitle;
+    IconData icon;
+
+    if (_hasTodaySchedule) {
+      title = '오늘($todayName) ${_todayScheduleTime ?? ""} 수영 예정!';
+      subtitle = '코치에게 오늘의 맞춤 프로그램을 받아보세요';
+      icon = Icons.pool;
+    } else if (_recentLogs.isNotEmpty) {
+      final daysSinceLast = DateTime.now()
+          .difference(_recentLogs.first.startedAt)
+          .inDays;
+      if (daysSinceLast >= 3) {
+        title = '${daysSinceLast}일째 쉬고 있어요';
+        subtitle = '가벼운 훈련부터 다시 시작해볼까요?';
+        icon = Icons.fitness_center;
+      } else {
+        title = '다음 훈련을 준비해볼까요?';
+        subtitle = '코치가 최근 기록을 분석해서 추천해드려요';
+        icon = Icons.auto_awesome;
+      }
+    } else {
+      title = '첫 훈련을 시작해보세요!';
+      subtitle = 'AI 코치가 맞춤 프로그램을 만들어드려요';
+      icon = Icons.waving_hand;
+    }
 
     return GestureDetector(
-      onTap: hasLogs
-          ? () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ChatScreen(initialMessage: _buildCoachMessage()),
-                ),
-              );
-            }
-          : null,
+      onTap: () => widget.onNavigateToCoach?.call(),
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          gradient: hasLogs
-              ? const LinearGradient(
-                  colors: [Color(0xFF1A2744), Color(0xFF0A2A3F)],
-                )
-              : null,
-          color: hasLogs ? null : AppTheme.cardColor,
+          gradient: const LinearGradient(
+            colors: [Color(0xFF0D3B66), Color(0xFF14506A)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: hasLogs
-                ? AppTheme.primaryBlue.withValues(alpha: 0.4)
-                : Colors.white.withValues(alpha: 0.06),
+            color: AppTheme.primaryBlue.withValues(alpha: 0.35),
           ),
+          boxShadow: [
+            BoxShadow(
+              color: AppTheme.primaryBlue.withValues(alpha: 0.12),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Row(
           children: [
             Container(
-              width: 48,
-              height: 48,
+              width: 46,
+              height: 46,
               decoration: BoxDecoration(
-                gradient: hasLogs ? AppTheme.primaryGradient : null,
-                color: hasLogs ? null : Colors.white.withValues(alpha: 0.05),
-                borderRadius: BorderRadius.circular(14),
+                gradient: AppTheme.primaryGradient,
+                borderRadius: BorderRadius.circular(13),
               ),
-              child: Icon(
-                Icons.auto_awesome,
-                color:
-                    hasLogs ? Colors.white : Colors.white.withValues(alpha: 0.3),
-                size: 24,
-              ),
+              child: Icon(icon, color: Colors.white, size: 24),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'AI 코치에게 묻어보기',
-                    style: TextStyle(
+                  Text(
+                    title,
+                    style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
-                      fontSize: 16,
+                      fontSize: 15,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 3),
                   Text(
-                    hasLogs
-                        ? '최근 운동 분석 · 다음 훈련 코치맞음'
-                        : '운동 기록이 있으면 AI 코치에게 묻어보세요',
+                    subtitle,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.5),
+                      color: Colors.white.withValues(alpha: 0.6),
                       fontSize: 13,
                     ),
                   ),
                 ],
               ),
             ),
-            if (hasLogs)
-              const Icon(
-                Icons.arrow_forward_ios,
-                color: AppTheme.primaryBlue,
-                size: 16,
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
               ),
+              child: const Icon(
+                Icons.arrow_forward_ios,
+                color: Colors.white70,
+                size: 14,
+              ),
+            ),
           ],
         ),
       ),

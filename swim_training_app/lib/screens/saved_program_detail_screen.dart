@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:add_2_calendar/add_2_calendar.dart';
 import '../theme/app_theme.dart';
 import '../models/saved_program.dart';
 import '../models/program_response.dart';
 import '../services/local_storage_service.dart';
+import '../data/drill_descriptions.dart';
 import 'workout_execution_screen.dart';
 
 class SavedProgramDetailScreen extends StatefulWidget {
@@ -406,6 +408,203 @@ class _SavedProgramDetailScreenState extends State<SavedProgramDetailScreen> {
         ),
       ),
     );
+  }
+
+  void _showCalendarBottomSheet() {
+    DateTime selectedDate = DateTime.now();
+    TimeOfDay selectedTime = const TimeOfDay(hour: 6, minute: 0);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '캘린더에 추가할까요?',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '수영 훈련 일정을 캘린더에 등록해드려요',
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 14),
+                  ),
+                  const SizedBox(height: 20),
+                  GestureDetector(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: selectedDate,
+                        firstDate: DateTime.now(),
+                        lastDate: DateTime.now().add(const Duration(days: 365)),
+                        builder: (context, child) => Theme(
+                          data: ThemeData.dark().copyWith(
+                            colorScheme: const ColorScheme.dark(
+                              primary: AppTheme.primaryBlue,
+                              surface: AppTheme.primaryDark,
+                            ),
+                          ),
+                          child: child!,
+                        ),
+                      );
+                      if (picked != null) {
+                        setModalState(() => selectedDate = picked);
+                      }
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.calendar_today, color: Colors.white70, size: 20),
+                          const SizedBox(width: 12),
+                          Text(
+                            '${selectedDate.year}.${selectedDate.month.toString().padLeft(2, '0')}.${selectedDate.day.toString().padLeft(2, '0')}',
+                            style: const TextStyle(color: Colors.white, fontSize: 16),
+                          ),
+                          const Spacer(),
+                          const Icon(Icons.chevron_right, color: Colors.white38),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  GestureDetector(
+                    onTap: () async {
+                      final picked = await showTimePicker(
+                        context: context,
+                        initialTime: selectedTime,
+                        builder: (context, child) => Theme(
+                          data: ThemeData.dark().copyWith(
+                            colorScheme: const ColorScheme.dark(
+                              primary: AppTheme.primaryBlue,
+                              surface: AppTheme.primaryDark,
+                            ),
+                          ),
+                          child: child!,
+                        ),
+                      );
+                      if (picked != null) {
+                        setModalState(() => selectedTime = picked);
+                      }
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.access_time, color: Colors.white70, size: 20),
+                          const SizedBox(width: 12),
+                          Text(
+                            '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}',
+                            style: const TextStyle(color: Colors.white, fontSize: 16),
+                          ),
+                          const Spacer(),
+                          const Icon(Icons.chevron_right, color: Colors.white38),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => Navigator.pop(ctx),
+                          child: Container(
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Center(
+                              child: Text(
+                                '건너뛰기',
+                                style: TextStyle(color: Colors.white70, fontSize: 15),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            _addToCalendar(selectedDate, selectedTime);
+                          },
+                          child: Container(
+                            height: 48,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF00B4D8), Color(0xFF0077B6)],
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Center(
+                              child: Text(
+                                '캘린더에 추가',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _addToCalendar(DateTime date, TimeOfDay time) {
+    final startDt = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    final endDt = startDt.add(const Duration(hours: 1));
+
+    final program = _currentProgram;
+    final totalDist = program.program.totalDistance;
+    final goal = program.trainingGoal;
+
+    final event = Event(
+      title: '[수영] ${program.title}',
+      description: '목표: $goal\n총 거리: ${totalDist}m\n레벨: ${program.levelLabel}',
+      location: '',
+      startDate: startDt,
+      endDate: endDt,
+      iosParams: const IOSParams(reminder: Duration(minutes: 30)),
+      androidParams: const AndroidParams(emailInvites: []),
+    );
+
+    Add2Calendar.addEvent2Cal(event);
   }
 
   // 변경사항 저장
@@ -893,6 +1092,7 @@ class _SavedProgramDetailScreenState extends State<SavedProgramDetailScreen> {
                                           backgroundColor: Colors.green,
                                         ),
                                       );
+                                      _showCalendarBottomSheet();
                                     }
                                   } catch (e) {
                                     if (mounted) {
@@ -1009,6 +1209,38 @@ class _SavedProgramDetailScreenState extends State<SavedProgramDetailScreen> {
                         ),
                         const SizedBox(height: 10),
                       ],
+                      // 캘린더에 추가 버튼 (저장된 프로그램용)
+                      if (!widget.isFromChat)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: GestureDetector(
+                            onTap: () => _showCalendarBottomSheet(),
+                            child: Container(
+                              width: double.infinity,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+                              ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.calendar_month, color: Colors.white70, size: 20),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    '캘린더에 추가',
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                       // Let's Start 버튼 (채팅에서 열었을 때는 숨김)
                       if (!widget.isFromChat)
                       GestureDetector(
@@ -1237,6 +1469,17 @@ class _SavedProgramDetailScreenState extends State<SavedProgramDetailScreen> {
                     ),
                   ),
                 ),
+                if (findDrillInfo(exercise.description) != null)
+                  SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: Icon(Icons.info_outline,
+                          size: 18, color: AppTheme.primaryBlue.withOpacity(0.7)),
+                      onPressed: () => _showDrillExplanation(exercise.description),
+                    ),
+                  ),
                 if (_isEditMode)
                   Icon(Icons.edit,
                       size: 16,
@@ -1258,6 +1501,103 @@ class _SavedProgramDetailScreenState extends State<SavedProgramDetailScreen> {
           ],
         ),
       ),
+    );
+  }
+
+
+  void _showDrillExplanation(String description) {
+    final drill = findDrillInfo(description);
+    if (drill == null) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: AppTheme.cardColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                Icon(Icons.pool, color: AppTheme.primaryBlue, size: 22),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    drill.name,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryBlue.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    drill.stroke,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.primaryBlue,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            _drillInfoRow('\ud83c\udfaf \ubaa9\uc801', drill.purpose),
+            const SizedBox(height: 12),
+            _drillInfoRow('\ud83c\udfca \ubc29\ubc95', drill.method),
+            const SizedBox(height: 12),
+            _drillInfoRow('\u2728 \ud6a8\uacfc', drill.effect),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _drillInfoRow(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.primaryBlue,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 14,
+            color: Colors.white.withOpacity(0.85),
+            height: 1.4,
+          ),
+        ),
+      ],
     );
   }
 

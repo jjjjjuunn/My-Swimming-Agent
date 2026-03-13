@@ -19,6 +19,7 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
+  // 싱글턴 서비스 — 앱 생명주기 동안 대화 이력 유지
   final _agentService = AgentService();
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
@@ -36,15 +37,37 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _activeToolLabel;
 
   bool _isLoading = false;
+  bool _timedOut = false; // 타임아웃 이후 스트림 이벤트 무시용
+
+  /// 장비 Quick Reply 표시 여부
+  bool _showEquipmentChips = false;
+  final List<String> _selectedEquipment = [];
+
+  static const _equipmentOptions = [
+    {'key': 'all', 'label': '전부 사용 가능'},
+    {'key': 'fins', 'label': '핀(오리발)'},
+    {'key': 'paddles', 'label': '패들'},
+    {'key': 'kickboard', 'label': '킥보드'},
+    {'key': 'pull_buoy', 'label': '풀부이'},
+    {'key': 'none', 'label': '장비 없음'},
+  ];
 
   @override
   void initState() {
     super.initState();
+    // 싱글턴에 저장된 이전 메시지 복원 후 인사 또는 이력 표시
+    _restoreHistory();
+    // hasGreeted=true 이지만 history가 없으면 이전 인사가 실패한 것 → 재시도
+    if (_agentService.hasGreeted && _messages.isEmpty) {
+      _agentService.hasGreeted = false;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (widget.initialMessage != null) {
         _sendInitialMessage(widget.initialMessage!);
-      } else {
+      } else if (!_agentService.hasGreeted) {
         _sendGreeting();
+      } else if (_messages.isNotEmpty) {
+        _scrollToBottom();
       }
     });
   }
@@ -54,6 +77,16 @@ class _ChatScreenState extends State<ChatScreen> {
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  // ── 싱글턴 이력에서 UI 메시지 복원 (initState에서만 호출) ──
+  void _restoreHistory() {
+    for (final msg in _agentService.history) {
+      _messages.add(_ChatDisplayMessage(
+        role: msg.role,
+        content: msg.content,
+      ));
+    }
   }
 
   // ── 운동 완료 후 자동 첫 메시지 ──
@@ -73,15 +106,17 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // ── 자동 인사 ──
   Future<void> _sendGreeting() async {
+    _agentService.hasGreeted = true;
     setState(() {
       _isLoading = true;
       _streamingText = '';
       _activeToolLabel = null;
     });
+    _scrollToBottom(); // 타이핑 버블 즉시 표시
 
     final userId = FirebaseAuth.instance.currentUser?.uid;
     await _processStream(
-      message: '채팅을 시작합니다. 사용자에게 인사하고 오늘 컨디션을 물어봐주세요.',
+      message: '사용자에게 인사하고 오늘 컨디션을 물어봐주세요.',
       userId: userId,
     );
   }
@@ -135,10 +170,12 @@ class _ChatScreenState extends State<ChatScreen> {
     _pendingProgramData = null;
     bool _programToolActive = false; // generate_program 진행 중 토큰 무시
 
-    // 120초 타임아웃 — 서버가 응답하지 않는 경우 로딩 상태를 해제
+    // 180초 타임아웃 — 서버가 응답하지 않는 경우 로딩 상태를 해제
     Timer? _timeoutTimer;
-    _timeoutTimer = Timer(const Duration(seconds: 120), () {
+    _timedOut = false;
+    _timeoutTimer = Timer(const Duration(seconds: 180), () {
       if (_isLoading && mounted) {
+        _timedOut = true; // await for 루프에서 다음 이벤트 수신 시 break
         setState(() {
           _messages.add(_ChatDisplayMessage(
             role: 'assistant',
@@ -156,6 +193,7 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
     await for (final event
         in _agentService.chatStream(message: message, userId: userId)) {
+      if (_timedOut) break; // 타임아웃 후 도착한 이벤트 무시 → 중복 메시지 방지
       switch (event.type) {
         case AgentEventType.token:
           // generate_program 진행 중이면 토큰 무시
@@ -180,6 +218,7 @@ class _ChatScreenState extends State<ChatScreen> {
             _activeToolLabel =
                 AgentService.toolDisplayName(event.toolName ?? '');
           });
+          _scrollToBottom(); // 타이핑 버블의 툴 라벨이 보이도록 스크롤
 
         case AgentEventType.toolEnd:
           // generate_program 결과 캡처
@@ -196,6 +235,10 @@ class _ChatScreenState extends State<ChatScreen> {
           if (fullText.isNotEmpty || _pendingProgramData != null) {
             if (fullText.isNotEmpty) {
               _agentService.addAssistantMessage(fullText);
+              if (_detectEquipmentQuestion(fullText)) {
+                _showEquipmentChips = true;
+                _selectedEquipment.clear();
+              }
             }
             setState(() {
               _messages.add(_ChatDisplayMessage(
@@ -258,11 +301,19 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  bool _detectEquipmentQuestion(String text) {
+    const keywords = ['장비', '도구', '킥보드', '풀부이', '핀', '패들', '오리발', '사용 가능', '사용할 수'];
+    final lower = text.toLowerCase();
+    final hasKeyword = keywords.any((k) => lower.contains(k));
+    final isQuestion = lower.contains('?') || lower.contains('있') || lower.contains('어요') || lower.contains('나요') || lower.contains('할 수');
+    return hasKeyword && isQuestion;
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
+          0,
           duration: const Duration(milliseconds: 150),
           curve: Curves.easeOut,
         );
@@ -277,11 +328,12 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Container(
         decoration: const BoxDecoration(gradient: AppTheme.backgroundGradient),
         child: SafeArea(
+          bottom: false,
           child: Column(
             children: [
               _buildHeader(),
               Expanded(child: _buildMessageList()),
-              if (_activeToolLabel != null) _buildToolIndicator(),
+              _buildEquipmentChips(),
               _buildInput(),
             ],
           ),
@@ -291,24 +343,26 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildHeader() {
+    final canGoBack = ModalRoute.of(context)?.canPop ?? false;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: () => Navigator.pop(context),
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(10),
+          if (canGoBack)
+            GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                width: 36,
+                height: 36,
+                margin: const EdgeInsets.only(right: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.arrow_back_ios_new,
+                    color: Colors.white.withValues(alpha: 0.6), size: 16),
               ),
-              child: const Icon(Icons.arrow_back_ios_new_rounded,
-                  color: Colors.white, size: 18),
             ),
-          ),
-          const SizedBox(width: 12),
           Container(
             width: 36,
             height: 36,
@@ -331,16 +385,35 @@ class _ChatScreenState extends State<ChatScreen> {
                     fontSize: 16,
                   ),
                 ),
-                Text(
-                  _isLoading ? '입력 중...' : '온라인',
+                const Text(
+                  '온라인',
                   style: TextStyle(
-                    color: _isLoading
-                        ? AppTheme.primaryBlue
-                        : Colors.white.withValues(alpha: 0.5),
+                    color: Colors.white54,
                     fontSize: 12,
                   ),
                 ),
               ],
+            ),
+          ),
+          // 대화 초기화 버튼
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                _messages.clear();
+                _streamingText = '';
+              });
+              _agentService.clearHistory();
+              _sendGreeting();
+            },
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(Icons.refresh_rounded,
+                  color: Colors.white.withValues(alpha: 0.6), size: 18),
             ),
           ),
         ],
@@ -350,8 +423,15 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildMessageList() {
     final hasStreamingText = _streamingText.isNotEmpty;
+    final showToolBubble = _isLoading && _activeToolLabel != null;
+    final showTypingBubble =
+        _isLoading && !hasStreamingText && _activeToolLabel == null;
+    final showTrailingLoader = _isLoading && hasStreamingText;
 
-    if (_messages.isEmpty && !hasStreamingText) {
+    if (_messages.isEmpty &&
+        !hasStreamingText &&
+        !showToolBubble &&
+        !showTypingBubble) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(40),
@@ -376,19 +456,33 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     }
 
+    // reverse: true 에서 bottom에 표시할 trailing 아이템 목록 (bottom → top 순서)
+    final trailing = <Widget>[];
+    if (showTypingBubble) trailing.add(_TypingBubble(toolLabel: _activeToolLabel));
+    if (showToolBubble && !hasStreamingText) trailing.add(_TypingBubble(toolLabel: _activeToolLabel));
+    if (showTrailingLoader) trailing.add(_TypingBubble(toolLabel: _activeToolLabel));
+    if (hasStreamingText) {
+      trailing.add(_buildBubble(
+        _ChatDisplayMessage(role: 'assistant', content: _streamingText),
+        isStreaming: true,
+      ));
+    }
+
+    final totalCount = _messages.length + trailing.length;
+
     return ListView.builder(
       controller: _scrollController,
+      reverse: true,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      itemCount: _messages.length + (hasStreamingText ? 1 : 0),
+      itemCount: totalCount,
       itemBuilder: (context, index) {
-        if (index < _messages.length) {
-          return _buildBubble(_messages[index]);
+        // reverse: true → index 0 = 화면 맨 아래
+        // trailing 아이템이 맨 아래, 그 위로 메시지 (최신→과거)
+        if (index < trailing.length) {
+          return trailing[index];
         }
-        // 스트리밍 중인 메시지
-        return _buildBubble(
-          _ChatDisplayMessage(role: 'assistant', content: _streamingText),
-          isStreaming: true,
-        );
+        final msgIndex = _messages.length - 1 - (index - trailing.length);
+        return _buildBubble(_messages[msgIndex]);
       },
     );
   }
@@ -486,6 +580,114 @@ class _ChatScreenState extends State<ChatScreen> {
               fontSize: 12,
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  void _onEquipmentChipTap(String key) {
+    setState(() {
+      if (key == 'all') {
+        _selectedEquipment.clear();
+        _selectedEquipment.addAll(['fins', 'paddles', 'kickboard', 'pull_buoy']);
+        _showEquipmentChips = false;
+        _sendEquipmentSelection();
+      } else if (key == 'none') {
+        _selectedEquipment.clear();
+        _showEquipmentChips = false;
+        _sendEquipmentSelection();
+      } else {
+        if (_selectedEquipment.contains(key)) {
+          _selectedEquipment.remove(key);
+        } else {
+          _selectedEquipment.add(key);
+        }
+      }
+    });
+  }
+
+  void _sendEquipmentSelection() {
+    final labels = {
+      'fins': '핀(오리발)', 'paddles': '패들',
+      'kickboard': '킥보드', 'pull_buoy': '풀부이',
+    };
+    final text = _selectedEquipment.isEmpty
+        ? '장비 없이 맨몸으로 할게요'
+        : '오늘 사용할 장비: ${_selectedEquipment.map((k) => labels[k] ?? k).join(', ')}';
+
+    _controller.text = text;
+    _sendMessage();
+  }
+
+  void _confirmEquipmentSelection() {
+    setState(() => _showEquipmentChips = false);
+    _sendEquipmentSelection();
+  }
+
+  Widget _buildEquipmentChips() {
+    if (!_showEquipmentChips) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '오늘 사용할 장비를 선택하세요',
+            style: TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _equipmentOptions.map((opt) {
+              final key = opt['key']!;
+              final label = opt['label']!;
+              final isAllOrNone = key == 'all' || key == 'none';
+              final isSelected = !isAllOrNone && _selectedEquipment.contains(key);
+
+              return GestureDetector(
+                onTap: () => _onEquipmentChipTap(key),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    gradient: isSelected ? AppTheme.primaryGradient : null,
+                    color: isSelected ? null : Colors.white.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: isAllOrNone
+                        ? Border.all(color: Colors.white24)
+                        : null,
+                  ),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : Colors.white70,
+                      fontSize: 13,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          if (_selectedEquipment.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00D2FF),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: _confirmEquipmentSelection,
+                child: Text(
+                  '선택 완료 (${_selectedEquipment.length}개)',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -721,4 +923,106 @@ class _ChatDisplayMessage {
     required this.content,
     this.programData,
   });
+}
+
+/// Coach가 응답 생성 중일 때 보여주는 타이핑 인디케이터 말풍선
+/// - toolLabel == null  → 점 3개 애니메이션 (기본 상태)
+/// - toolLabel != null  → 스피너 + 툴 진행 라벨 (e.g. '프로그램 생성 중...')
+class _TypingBubble extends StatefulWidget {
+  final String? toolLabel;
+  const _TypingBubble({this.toolLabel});
+
+  @override
+  State<_TypingBubble> createState() => _TypingBubbleState();
+}
+
+class _TypingBubbleState extends State<_TypingBubble>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _anim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _anim.dispose();
+    super.dispose();
+  }
+
+  // 삼각파(triangle wave) — 각 점에 1/3 주기 오프셋 적용
+  double _dotOpacity(double t, int i) {
+    final v = (t * 3.0 - i) % 1.0;
+    return v < 0.5 ? v * 2.0 : (1.0 - v) * 2.0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 220),
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppTheme.cardColor,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(16),
+            topRight: Radius.circular(16),
+            bottomLeft: Radius.circular(4),
+            bottomRight: Radius.circular(16),
+          ),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        ),
+        child: widget.toolLabel != null
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 1.5,
+                      color: AppTheme.primaryBlue,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      widget.toolLabel!,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.7),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            : AnimatedBuilder(
+                animation: _anim,
+                builder: (_, __) => Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: List.generate(3, (i) {
+                    final opacity = _dotOpacity(_anim.value, i);
+                    return Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white
+                            .withValues(alpha: 0.25 + opacity * 0.75),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+      ),
+    );
+  }
 }

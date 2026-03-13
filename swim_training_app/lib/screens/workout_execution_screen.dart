@@ -5,7 +5,7 @@ import '../models/saved_program.dart';
 import '../models/workout_log.dart';
 import '../services/workout_log_service.dart';
 import '../theme/app_theme.dart';
-import 'chat_screen.dart';
+import 'main_screen.dart';
 
 class WorkoutExecutionScreen extends StatefulWidget {
   final SavedProgram savedProgram;
@@ -242,6 +242,7 @@ class _WorkoutExecutionScreenState extends State<WorkoutExecutionScreen> {
       completedRepeat: actualCompleted,
       status: status,
       durationSeconds: activeDuration,
+      cycleTime: item.exercise.cycleTime,
       pauses: List<PauseLog>.from(_currentPauses),
     );
 
@@ -312,11 +313,12 @@ class _WorkoutExecutionScreenState extends State<WorkoutExecutionScreen> {
   }
 
   /// 운동 완료 요약 메시지 빌드
-  String _buildSummaryMessage(WorkoutLog log) {
+  String _buildSummaryMessage(WorkoutLog log, {String? difficulty, String? timeFeel}) {
     final parts = <String>[];
-    parts.add('방금 "폭로그램 제목: ${log.programTitle}" 훈련을 끝냈어.');
+    parts.add('방금 "프로그램 제목: ${log.programTitle}" 훈련을 끝냈어.');
     final comp = log.completionRate.toStringAsFixed(0);
-    parts.add('계획 ${log.plannedDistance}m → 완료 ${log.completedDistance}m (통조율 ${comp}%)');
+    parts.add('계획 ${log.plannedDistance}m → 완료 ${log.completedDistance}m (완주율 ${comp}%)');
+    parts.add('전체 소요 시간: ${log.durationMinutes}분');
     if (log.strokes.isNotEmpty) {
       parts.add('종목: ${log.strokes.join(', ')}');
     }
@@ -329,79 +331,126 @@ class _WorkoutExecutionScreenState extends State<WorkoutExecutionScreen> {
       if (partialSets > 0) setLineParts.add('${partialSets}개 부분완료');
       if (skippedSets > 0) setLineParts.add('${skippedSets}개 스킵');
       parts.add(setLineParts.join(', '));
-      for (final s in log.sets.where((s) => s.status == 'skipped' && s.completedRepeat > 0)) {
-        parts.add('  └ ${s.exercise}: ${s.repeat}회 중 ${s.completedRepeat}회 완료');
+      for (final s in log.sets) {
+        final dur = s.durationSeconds != null ? ' (${s.durationSeconds}초)' : '';
+        final cycle = s.cycleTime != null && s.cycleTime!.isNotEmpty ? ' [계획 cycle: ${s.cycleTime}]' : '';
+        if (s.status == 'completed') {
+          parts.add('  └ ${s.exercise}: ${s.repeat}회 완료$dur$cycle');
+        } else if (s.status == 'skipped' && s.completedRepeat > 0) {
+          parts.add('  └ ${s.exercise}: ${s.repeat}회 중 ${s.completedRepeat}회 완료$dur$cycle');
+        }
       }
+    }
+    if (difficulty != null && difficulty.isNotEmpty) {
+      parts.add('체감 난이도: $difficulty');
+    }
+    if (timeFeel != null && timeFeel.isNotEmpty) {
+      parts.add('훈련 길이 체감: $timeFeel');
     }
     parts.add('\n오늘 훈련 분석해주고 다음 훈련 방향 추천해줘.');
     return parts.join('\n');
   }
 
-  /// 운동 완료 후 바텐시트 표시
+  /// 운동 완료 후 바텀시트 표시
   Future<void> _showWorkoutCompleteSheet({
     required WorkoutLog log,
     required String result,
   }) async {
-    final summaryMessage = _buildSummaryMessage(log);
+    String selectedDifficulty = '';
+    String selectedTimeFeel = '';
 
     final goToChat = await showModalBottomSheet<bool>(
       context: context,
       backgroundColor: Colors.transparent,
       isDismissible: false,
       enableDrag: false,
-      builder: (sheetCtx) => Container(
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-        decoration: const BoxDecoration(
-          color: Color(0xFF0D1B2A),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white24,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Icon(Icons.check_circle_rounded, color: AppTheme.success, size: 56),
-            const SizedBox(height: 12),
-            const Text(
-              '훈련 완료!',
-              style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '${log.completedDistance}m 완주 · ${log.completionRate.toStringAsFixed(0)}% 달성',
-              style: const TextStyle(color: Colors.white54, fontSize: 14),
-            ),
-            const SizedBox(height: 28),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => Navigator.pop(sheetCtx, true),
-                icon: const Icon(Icons.auto_awesome, size: 18),
-                label: const Text('AI 코치에게 분석 요청', style: TextStyle(fontSize: 15)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryBlue,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      isScrollControlled: true,
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Container(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+          decoration: const BoxDecoration(
+            color: Color(0xFF0D1B2A),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: TextButton(
-                onPressed: () => Navigator.pop(sheetCtx, false),
-                child: const Text('나중에', style: TextStyle(color: Colors.white54, fontSize: 15)),
+              const SizedBox(height: 24),
+              const Icon(Icons.check_circle_rounded, color: AppTheme.success, size: 56),
+              const SizedBox(height: 12),
+              const Text(
+                '훈련 완료!',
+                style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
               ),
-            ),
-          ],
+              const SizedBox(height: 6),
+              Text(
+                '${log.completedDistance}m 완주 · ${log.completionRate.toStringAsFixed(0)}% 달성 · ${log.durationMinutes}분',
+                style: const TextStyle(color: Colors.white54, fontSize: 14),
+              ),
+              const SizedBox(height: 24),
+              // --- 난이도 선택 ---
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text('체감 난이도', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  _feedbackChip(label: '쉬움', value: '쉬움', selected: selectedDifficulty, onTap: (v) => setSheetState(() => selectedDifficulty = v)),
+                  const SizedBox(width: 8),
+                  _feedbackChip(label: '적당', value: '적당', selected: selectedDifficulty, onTap: (v) => setSheetState(() => selectedDifficulty = v)),
+                  const SizedBox(width: 8),
+                  _feedbackChip(label: '어려움', value: '어려움', selected: selectedDifficulty, onTap: (v) => setSheetState(() => selectedDifficulty = v)),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // --- 시간 체감 선택 ---
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text('훈련 길이', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  _feedbackChip(label: '짧았음', value: '짧았음', selected: selectedTimeFeel, onTap: (v) => setSheetState(() => selectedTimeFeel = v)),
+                  const SizedBox(width: 8),
+                  _feedbackChip(label: '적당', value: '적당', selected: selectedTimeFeel, onTap: (v) => setSheetState(() => selectedTimeFeel = v)),
+                  const SizedBox(width: 8),
+                  _feedbackChip(label: '길었음', value: '길었음', selected: selectedTimeFeel, onTap: (v) => setSheetState(() => selectedTimeFeel = v)),
+                ],
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => Navigator.pop(sheetCtx, true),
+                  icon: const Icon(Icons.auto_awesome, size: 18),
+                  label: const Text('AI 코치에게 분석 요청', style: TextStyle(fontSize: 15)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryBlue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(sheetCtx, false),
+                  child: const Text('나중에', style: TextStyle(color: Colors.white54, fontSize: 15)),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -409,9 +458,11 @@ class _WorkoutExecutionScreenState extends State<WorkoutExecutionScreen> {
     if (!mounted) return;
 
     if (goToChat == true) {
-      Navigator.pushReplacement(
+      final summaryMessage = _buildSummaryMessage(log, difficulty: selectedDifficulty, timeFeel: selectedTimeFeel);
+      Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => ChatScreen(initialMessage: summaryMessage)),
+        MaterialPageRoute(builder: (_) => MainScreen(initialTab: 2, initialChatMessage: summaryMessage)),
+        (route) => false,
       );
     } else {
       Navigator.pop(context, result);
@@ -749,6 +800,40 @@ class _WorkoutExecutionScreenState extends State<WorkoutExecutionScreen> {
             style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 15),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _feedbackChip({
+    required String label,
+    required String value,
+    required String selected,
+    required ValueChanged<String> onTap,
+  }) {
+    final isSelected = selected == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => onTap(isSelected ? '' : value),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? AppTheme.primaryBlue.withValues(alpha: 0.3) : Colors.white.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isSelected ? AppTheme.primaryBlue : Colors.white.withValues(alpha: 0.1),
+              width: 1.2,
+            ),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? Colors.white : Colors.white60,
+              fontSize: 13,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+            ),
+          ),
+        ),
       ),
     );
   }

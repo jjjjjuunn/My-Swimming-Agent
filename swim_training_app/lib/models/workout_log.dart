@@ -39,6 +39,7 @@ class WorkoutLog {
     'completed_at': completedAt.toIso8601String(),
     'planned_distance': plannedDistance,
     'completed_distance': completedDistance,
+    'duration_minutes': completedAt.difference(startedAt).inMinutes,
     'sets': sets.map((s) => s.toJson()).toList(),
   };
 
@@ -65,6 +66,7 @@ class SetLog {
   final int completedRepeat; // 실제 완료 반복 횟수
   final String status; // completed, skipped, stopped
   final int? durationSeconds; // 소요 시간
+  final String? cycleTime; // 계획된 사이클 타임 (원본 프로그램)
   final List<PauseLog> pauses; // 정지 기록
 
   SetLog({
@@ -74,6 +76,7 @@ class SetLog {
     required this.completedRepeat,
     required this.status,
     this.durationSeconds,
+    this.cycleTime,
     this.pauses = const [],
   });
 
@@ -87,6 +90,7 @@ class SetLog {
     'completed_repeat': completedRepeat,
     'status': status,
     if (durationSeconds != null) 'duration_seconds': durationSeconds,
+    if (cycleTime != null) 'cycle_time': cycleTime,
     'pauses': pauses.map((p) => p.toJson()).toList(),
   };
 
@@ -98,6 +102,7 @@ class SetLog {
         (json['status'] == 'completed' ? json['repeat'] as int : 0),
     status: json['status'] as String,
     durationSeconds: json['duration_seconds'] as int?,
+    cycleTime: json['cycle_time'] as String?,
     pauses: json['pauses'] != null
         ? (json['pauses'] as List)
             .map((p) => PauseLog.fromJson(p as Map<String, dynamic>))
