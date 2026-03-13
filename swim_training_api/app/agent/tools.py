@@ -53,7 +53,7 @@ def get_user_profile(user_id: str) -> str:
         if not doc.exists:
             return json.dumps({"error": "사용자 정보를 찾을 수 없습니다."}, ensure_ascii=False)
 
-        data = doc.to_dict()
+        data = doc.to_dict() or {}
         profile = {
             "displayName": data.get("displayName", ""),
             "level": data.get("level", "미설정"),
@@ -99,6 +99,8 @@ def get_workout_history(user_id: str, limit: int = 7) -> str:
 
         for doc in docs:
             data = doc.to_dict()
+            if data is None:
+                continue
 
             sets = data.get("sets", [])
             completed_sets = sum(1 for s in sets if s.get("status") == "completed")
@@ -370,7 +372,7 @@ def get_weakness_analysis(user_id: str) -> str:
             .stream()
         )
 
-        logs = [doc.to_dict() for doc in docs]
+        logs = [d for doc in docs if (d := doc.to_dict()) is not None]
         if not logs:
             return json.dumps(
                 {"message": "운동 기록이 없어 약점 분석이 불가합니다."},
@@ -428,7 +430,7 @@ def get_user_equipment(user_id: str) -> str:
         if not doc.exists:
             return json.dumps({"equipment": [], "message": "등록된 장비가 없습니다."}, ensure_ascii=False)
 
-        data = doc.to_dict()
+        data = doc.to_dict() or {}
         equipment = data.get("equipment", [])
         if not equipment:
             return json.dumps({"equipment": [], "message": "등록된 장비가 없습니다."}, ensure_ascii=False)
@@ -508,7 +510,7 @@ def get_today_condition(user_id: str) -> str:
                 ensure_ascii=False,
             )
 
-        data = doc.to_dict()
+        data = doc.to_dict() or {}
         return json.dumps(
             {
                 "has_condition": True,

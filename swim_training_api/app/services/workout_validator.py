@@ -206,7 +206,7 @@ class WorkoutValidator:
         return added
 
     @classmethod
-    def validate_structure(cls, raw_result: dict) -> dict:
+    def validate_structure(cls, raw_result: dict) -> tuple[dict, int]:
         """워크아웃 구조 검증 및 자동 교정 (P0)"""
         warnings = []
         total_fixes = 0
@@ -345,7 +345,7 @@ class WorkoutValidator:
     @classmethod
     def validate_and_fix_cycle_times(
         cls, raw_result: dict, strokes: list[str]
-    ) -> dict:
+    ) -> tuple[dict, int]:
         """사이클 타임 오류 검출 및 교정 (P1)
 
         수정사항:

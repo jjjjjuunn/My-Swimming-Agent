@@ -6,7 +6,7 @@ POST /agent/chat — SSE 스트리밍 응답
 import asyncio
 import json
 import logging
-from typing import Optional
+from typing import Optional, Union
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -17,6 +17,21 @@ from app.agent.graph import get_graph
 from app.agent.state import AgentState
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_text(content: Union[str, list, None]) -> str:
+    """AIMessage.content가 str 또는 list일 수 있으므로 안전하게 문자열로 변환"""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict) and "text" in block:
+                parts.append(block["text"])
+        return "".join(parts)
+    return str(content) if content is not None else ""
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -79,7 +94,7 @@ async def agent_chat(request: ChatRequest):
         if not ai_messages:
             raise HTTPException(status_code=500, detail="Agent가 응답을 생성하지 못했습니다.")
 
-        final_response = ai_messages[-1].content
+        final_response = _extract_text(ai_messages[-1].content)
 
         # 사용된 Tool 정보 수집
         used_tools = []
@@ -188,7 +203,7 @@ async def agent_chat_stream(request: ChatRequest):
                             continue
 
                         if hasattr(chunk, "content") and chunk.content:
-                            content = chunk.content
+                            content = _extract_text(chunk.content)
                             stripped = content.strip()
                             if stripped:
                                 first_char = stripped[0]

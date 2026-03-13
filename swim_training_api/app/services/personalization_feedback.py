@@ -775,14 +775,14 @@ async def get_user_feedback_history(
             db.collection("users")
             .document(user_id)
             .collection("feedback")
-            .order_by("created_at", direction=fs.Query.DESCENDING)
+            .order_by("created_at", direction="DESCENDING")
             .limit(limit)
             .stream()
         )
 
         feedback_list = [
-            doc.to_dict() for doc in docs
-            if doc.to_dict().get("submitted_at") is not None
+            d for doc in docs
+            if (d := doc.to_dict()) is not None and d.get("submitted_at") is not None
         ]
         logger.info(f"사용자 {user_id}의 피드백 {len(feedback_list)}건 조회")
         return feedback_list

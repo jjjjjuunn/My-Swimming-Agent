@@ -7,7 +7,7 @@ Agent는 LLM이 Tool 호출 여부를 자율적으로 결정하는 ReAct 패턴�
 """
 
 import logging
-from typing import Literal
+from typing import Literal, Union
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -244,6 +244,22 @@ def _get_model():
 # ──────────────────────────────────────────────
 # 노드 정의
 # ──────────────────────────────────────────────
+
+def _extract_text(content: Union[str, list, None]) -> str:
+    """AIMessage.content가 str 또는 list일 수 있으므로 안전하게 문자열로 변환"""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict) and "text" in block:
+                parts.append(block["text"])
+        return "".join(parts)
+    return str(content) if content is not None else ""
+
+
 async def agent_node(state: AgentState) -> dict:
     """Agent 노드 — LLM이 Tool 호출 여부를 판단하고 응답 생성"""
     messages = state["messages"]
@@ -258,8 +274,9 @@ async def agent_node(state: AgentState) -> dict:
     if user_id:
         context_note = f"\n\n[현재 사용자 ID: {user_id}]"
         if isinstance(messages[0], SystemMessage):
+            base = _extract_text(messages[0].content)
             messages[0] = SystemMessage(
-                content=messages[0].content + context_note
+                content=base + context_note
             )
 
     model = _get_model()
@@ -277,7 +294,7 @@ def should_continue(state: AgentState) -> Literal["tools", "redirect", "__end__"
 
     # 프로그램 생성을 약속만 하고 도구를 호출하지 않은 경우 감지
     if hasattr(last_message, "content") and last_message.content:
-        content = last_message.content
+        content = _extract_text(last_message.content)
         _PROMISE_KW = [
             "프로그램을 생성", "프로그램을 만들", "생성해드릴", "만들어드릴",
             "생성해볼", "만들어볼", "생성할게", "만들어줄게", "프로그램 생성",
@@ -288,7 +305,7 @@ def should_continue(state: AgentState) -> Literal["tools", "redirect", "__end__"
             msgs = state["messages"]
             if len(msgs) >= 2:
                 prev = msgs[-2]
-                if isinstance(prev, HumanMessage) and "[시스템]" in prev.content:
+                if isinstance(prev, HumanMessage) and "[시스템]" in _extract_text(prev.content):
                     return "__end__"
 
             # 미래 시점 키워드가 포함된 응답은 연기 약속이므로 redirect하지 않음
